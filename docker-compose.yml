@@ -1,0 +1,10 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: sandbox-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    restart: unless-stopped
