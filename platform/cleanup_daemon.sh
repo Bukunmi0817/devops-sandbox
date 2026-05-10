@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -15,18 +14,14 @@ log() {
 log "Cleanup daemon started."
 
 while true; do
-  shopt -s nullglob
-  STATE_FILES=("$ENVS_DIR"/*.json)
-  shopt -u nullglob
-
-  for STATE_FILE in "${STATE_FILES[@]}"; do
-    [[ -f "$STATE_FILE" ]] || continue
+  for STATE_FILE in "$ENVS_DIR"/*.json; do
+    [ -f "$STATE_FILE" ] || continue
 
     ENV_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['id'])")
     EXPIRES_AT=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['expires_at'])")
     NOW=$(date +%s)
 
-    if [[ "$NOW" -ge "$EXPIRES_AT" ]]; then
+    if [ "$NOW" -ge "$EXPIRES_AT" ]; then
       log "Environment $ENV_ID has expired. Destroying..."
       bash "$SCRIPT_DIR/destroy_env.sh" "$ENV_ID" >> "$LOG_FILE" 2>&1
       log "Environment $ENV_ID destroyed."
