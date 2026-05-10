@@ -6,6 +6,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 source "$ROOT_DIR/.env"
 
+# ── Clean stale Nginx configs ────────────────────────────
+for conf in "$ROOT_DIR/nginx/conf.d/"*.conf; do
+  [ -f "$conf" ] || continue
+  conf_env_id=$(basename "$conf" .conf)
+  if ! docker ps -q --filter "label=sandbox.env=$conf_env_id" | grep -q .; then
+    rm -f "$conf"
+  fi
+done
+docker exec "$NGINX_CONTAINER" nginx -s reload 2>/dev/null || true
+
+
+
 # ── Arguments ────────────────────────────────────────────
 ENV_NAME="${1:?Usage: create_env.sh <name> [ttl_minutes]}"
 TTL_MINUTES="${2:-30}"
