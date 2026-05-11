@@ -2,103 +2,165 @@
 
 A self-service platform for spinning up isolated temporary environments, simulating outages, and monitoring health — all on a single machine.
 
+## Architecture
+
+```
+                   +-------------------------------------+
+                   |           Your Machine              |
+                   |                                     |
+     HTTP :80      |   +-------------+                  |
+User ----------->  |   |    Nginx    |                  |
+                   |   |  (router)   |                  |
+                   |   +------+------+                  |
+                   |          | proxy_pass               |
+                   |   +------v------+  +------------+  |
+                   |   | app-env-    |  | app-env-   |  |
+                   |   | abc123:5000 |  | def456:5000|  |
+                   |   +-------------+  +------------+  |
+                   |                                     |
+                   |   +-------------+  +------------+  |
+                   |   |   Cleanup   |  | API :8080  |  |
+                   |   |   Daemon    |  |            |  |
+                   |   +-------------+  +------------+  |
+                   +-------------------------------------+
+```
+
 ## Prerequisites
 
-- Docker Desktop
+- Docker Desktop (running)
 - Python 3.9+
 - make
 
-## Quick Start
+## Quick Start — One Command
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/devops-sandbox.git
-cd devops-sandbox
-
-# 2. Start Nginx
-docker compose up -d
-
-# 3. Build the demo app image
-docker build -t sandbox-demo-app demo-app/
-
-# 4. Start the API and cleanup daemon
-nohup bash platform/cleanup_daemon.sh >> logs/cleanup.log 2>&1 &
-nohup python3 platform/api.py >> logs/api.log 2>&1 &
-
-# 5. Create your first environment
-bash platform/create_env.sh myapp 30
+make up
 ```
 
-## Demo Walkthrough
+That single command does everything:
+- Builds the demo app Docker image
+- Starts Nginx on port 80
+- Starts the control API on port 8080
+- Starts the cleanup daemon in the background
 
-### 1. Create an environment
+Then create your first environment:
+
 ```bash
-bash platform/create_env.sh myapp 30
-# Returns: URL and env ID
+make create
 ```
 
-### 2. Hit the app
+## Full Demo Walkthrough
+
+### 1. Start the platform
+```bash
+make up
+```
+
+### 2. Create an environment
+```bash
+make create
+# Enter name: myapp
+# Enter TTL: 30
+```
+
+### 3. Save the environment ID
+```bash
+TEST1=$(ls envs/ | sed 's/\.json//')
+echo $TEST1
+```
+
+### 4. Hit the app
 ```bash
 curl http://localhost/
 curl http://localhost/health
 ```
 
-### 3. Check health status
+### 5. List environments via API
+```bash
+curl http://localhost:8080/envs
+```
+
+### 6. View logs via API
+```bash
+curl http://localhost:8080/envs/$TEST1/logs
+```
+
+### 7. Check health status
 ```bash
 make health
 ```
 
-### 4. Simulate an outage
+### 8. Simulate an outage
 ```bash
-bash platform/simulate_outage.sh --env env-abc123 --mode pause
+make simulate ENV=$TEST1 MODE=pause
 ```
 
-### 5. Recover
+### 9. Confirm it is paused
 ```bash
-bash platform/simulate_outage.sh --env env-abc123 --mode recover
+docker ps
 ```
 
-### 6. Destroy manually
+### 10. Recover
 ```bash
-bash platform/destroy_env.sh env-abc123
+make simulate ENV=$TEST1 MODE=recover
 ```
 
-### 7. Auto-destroy (create with short TTL and wait)
+### 11. Auto-destroy demo
 ```bash
-bash platform/create_env.sh shortlived 1
-# Wait 60 seconds — cleanup daemon destroys it automatically
-cat logs/cleanup.log
+bash platform/create_env.sh shortlived 0
+# Wait 15 seconds
+cat logs/cleanup.log | tail -15
 ```
+
+### 12. Stop everything
+```bash
+make down
+```
+
+## Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| make up | Start everything - Nginx, API, cleanup daemon |
+| make down | Stop everything cleanly |
+| make create | Create a new environment (prompts for name and TTL) |
+| make destroy ENV=env-abc123 | Destroy a specific environment |
+| make logs ENV=env-abc123 | Tail environment logs |
+| make health | Show all environment health statuses |
+| make simulate ENV=env-abc123 MODE=pause | Run outage simulation |
+| make clean | Wipe all state and logs |
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | /envs | Create environment |
-| GET | /envs | List all environments |
+| GET | /envs | List all environments + TTL remaining |
 | DELETE | /envs/:id | Destroy environment |
 | GET | /envs/:id/logs | Last 100 lines of app log |
 | GET | /envs/:id/health | Last 10 health checks |
 | POST | /envs/:id/outage | Trigger outage simulation |
 
-## Makefile Commands
+## Outage Simulation Modes
 
-```bash
-make up                        # Start everything
-make down                      # Stop everything
-make create                    # Create new environment
-make destroy ENV=env-abc123    # Destroy specific environment
-make logs ENV=env-abc123       # Tail environment logs
-make health                    # Show all health statuses
-make simulate ENV=env-abc123 MODE=pause  # Run simulation
-make clean                     # Wipe all state and logs
-```
+| Mode | What it does |
+|------|-------------|
+| crash | Kills the container immediately |
+| pause | Freezes the container - stops responding |
+| network | Disconnects container from network |
+| recover | Restores whatever was broken |
+
+## Platform Rules
+
+- Maximum TTL is 30 minutes - anything higher is automatically capped
+- Minimum TTL is 0 - uses 10 seconds for demo purposes
+- Cleanup daemon checks every 10 seconds for expired environments
+- Logs are archived automatically on environment destroy
+- Nginx routes update instantly without restart
 
 ## Known Limitations
 
-- Environments use localhost routing — works on a single machine only
+- Environments use localhost routing - works on a single machine only
 - No authentication on the API
 - Log shipper uses simple approach (docker logs -f) not a proper aggregator
-- Health monitor requires manual start — not auto-started with make up
-
-
+- Health monitor requires manual start for continuous polling
