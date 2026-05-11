@@ -21,7 +21,11 @@ docker exec "$NGINX_CONTAINER" nginx -s reload 2>/dev/null || true
 # ── Arguments ────────────────────────────────────────────
 ENV_NAME="${1:?Usage: create_env.sh <name> [ttl_minutes]}"
 TTL_MINUTES="${2:-30}"
-TTL_SECONDS=$((TTL_MINUTES * 60))
+if [[ "$TTL_MINUTES" == "0" ]]; then
+  TTL_SECONDS=10
+else
+  TTL_SECONDS=$((TTL_MINUTES * 60))
+fi
 
 # ── Generate unique ID ───────────────────────────────────
 ENV_ID="env-$(openssl rand -hex 4)"
